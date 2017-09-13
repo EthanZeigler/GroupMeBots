@@ -1,0 +1,22 @@
+{
+  "weatherbot:production" : {
+    "bot_id" : "f4c307d3fb408a8b3ef2d93b2c",
+    "group_id" : "28437540"
+  },
+  "weatherbot:development" : {
+    "bot_id" : "bf78474243099197e20647e6a3",
+    "group_id" : "28619900"
+  },
+  "bowling_reminders:production" : {
+    "bot_id" : "c2d3ace5894976da0782875a70",
+    "group_id" : "10583955"
+  },
+  "forecast.io" : {
+    "api_key" : "2bc96ec7d50235c17c10da240048f02d",
+    "latitude" : "40.2691",
+    "longitude" : "-74.7774"
+  },
+  "groupme" : {
+    "token" : "5wE5f2uhl4IzlBm9G3yAW0De1EEPgg41SQdszYun"
+  }
+}

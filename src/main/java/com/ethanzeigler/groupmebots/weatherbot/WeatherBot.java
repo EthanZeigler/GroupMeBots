@@ -1,21 +1,37 @@
 package com.ethanzeigler.groupmebots.weatherbot;
 
 import com.ethanzeigler.groupmebots.AbstractBot;
-import com.ethanzeigler.groupmebots.GroupMeBot;
+import com.ethanzeigler.groupmebots.GroupMeBots;
+import com.ethanzeigler.groupmebots.ProductionLevel;
 import com.mashape.unirest.http.HttpResponse;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import com.mashape.unirest.http.exceptions.UnirestException;
 import org.joda.time.DateTime;
+import org.joda.time.DateTimeConstants;
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Created by Ethan on 1/29/17.
  */
 public class WeatherBot extends AbstractBot {
     private int lastDayOfMorningAnnounce;
+    private boolean rainedLastHour = false;
+    private int lastHourOfUpdate = -1;
+    private ProductionLevel productionLevel;
 
+    private Set<SevereAlert> cachedAlerts = new HashSet<>();
+
+    public WeatherBot(ProductionLevel productionLevel) {
+        this.productionLevel = productionLevel;
+    }
 
     /**
      * Called when the bot starts
@@ -24,17 +40,18 @@ public class WeatherBot extends AbstractBot {
      */
     @Override
     public void onStart(DateTime dateTime) {
-        try {
-            postMessage("Just restarting, don't worry about me... (I hope it isn't because I spammed you \uD83D\uDE30)");
-        } catch (UnirestException e) {
-            e.printStackTrace();
-        }
+//        try {
+//            postMessage("Just restarting, don't worry about me.");
+//        } catch (UnirestException e) {
+//            GroupMeBots.log(e, dateTime);
+//        }
 
         if (dateTime.getHourOfDay() >= 7) {
             lastDayOfMorningAnnounce = dateTime.getDayOfYear();
         } else {
             lastDayOfMorningAnnounce = dateTime.getDayOfYear() - 1;
         }
+        lastHourOfUpdate = dateTime.getHourOfDay();
     }
 
     /**
@@ -44,16 +61,119 @@ public class WeatherBot extends AbstractBot {
      */
     @Override
     public void onRefresh(DateTime dateTime) {
-        System.out.println(GroupMeBot.getTimeStamp(dateTime) + "[WeatherBot] LastDay: " + lastDayOfMorningAnnounce + ", Current Day: " + dateTime.getDayOfMonth() + ", Hour: " + dateTime.getHourOfDay() + " vs > 6");
         if (lastDayOfMorningAnnounce != dateTime.getDayOfYear()) {
             if (dateTime.getHourOfDay() > 6) {
-                announceMorningWeather(dateTime);
+                GroupMeBots.log("Fetching announce data");
+                announceMorningWeatherWunder(dateTime);
                 lastDayOfMorningAnnounce = dateTime.getDayOfYear();
             }
         }
+
+        if (dateTime.getHourOfDay() > 6 && dateTime.getHourOfDay() < 23) {
+            if (lastHourOfUpdate != dateTime.getHourOfDay()) {
+                lastHourOfUpdate = dateTime.getHourOfDay();
+                try {
+                    GroupMeBots.log("Fetching Weather data");
+                    Forecast forecast = Forecast.fetchForecast();
+                    GroupMeBots.log("[Weatherbot] Forecast input for rain: \n" +
+                            "*******************************\n*******************************\n"
+                            + forecast.toString() +
+                            "\n*******************************\n*******************************\n");
+                    alertCheck(forecast);
+                    rainCheck(forecast, dateTime);
+                } catch (UnirestException e) {
+                    e.printStackTrace();
+                }
+            }
+            // is within rain check section
+        } else {
+            rainedLastHour = false;
+        }
     }
 
-    private void announceMorningWeather(DateTime dateTime) {
+    private void rainCheck(Forecast forecast, DateTime dateTime) {
+        double percipChance = forecast.getHourlyPercipChance(0);
+        double percipIntensity = forecast.getHourlyPercipIntensity(0);
+        GroupMeBots.log("[WeatherBot] Raincheck: C=" + percipChance + ", I=" + percipIntensity + ", L=" + rainedLastHour);
+        if (percipChance >= 0.5 && percipIntensity > 0.01) {
+            if (!rainedLastHour) {
+                rainedLastHour = true;
+                try {
+                    postMessage("It looks like there might be rain this hour ☔️. " + (int) (percipChance * 100) + "% chance of rain at " + percipIntensity + " inches per hour.");
+                } catch (UnirestException e) {
+                    e.printStackTrace();
+                }
+            }
+        } else {
+            rainedLastHour = false;
+        }
+    }
+
+    private void alertCheck(Forecast forecast) {
+        for (SevereAlert currentAlert : forecast.getSevereAlerts()) {
+            GroupMeBots.log("Alert detected: " + currentAlert.getTitle());
+            if (cachedAlerts.stream().noneMatch(severeAlert -> currentAlert.isRepeatOf(severeAlert))) {
+                GroupMeBots.log("[WeatherBot] Alert not previously found. Broadcasting.");
+                cachedAlerts.add(currentAlert);
+                broadcastAlert(currentAlert);
+            }
+        }
+
+        cachedAlerts = forecast.getSevereAlerts();
+    }
+
+    private void broadcastAlert(SevereAlert alert) {
+        String msg = "A severe alert has been issued:\n";
+        msg += alert.getTitle() + "\n";
+        msg += alert.getUrl();
+        try {
+            postMessage(msg);
+        } catch (UnirestException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    public void announceMorningWeather(DateTime dateTime) {
+        try {
+            Forecast forecast = Forecast.fetchForecast();
+            String msg = "";
+
+            switch (GroupMeBots.getDateTime().getDayOfWeek()) {
+                case DateTimeConstants.MONDAY:
+                    msg = "Garfield isn't the only one who hates mondays... College students! \uD83D\uDE09\n";
+                    break;
+                case DateTimeConstants.TUESDAY:
+                    msg = "One day down, 4 to go! \uD83D\uDE0A\n";
+                    break;
+                case DateTimeConstants.WEDNESDAY:
+                    msg = "HUMP DAY! Half way there, everyone! \uD83D\uDC2A\n";
+                    break;
+                case DateTimeConstants.THURSDAY:
+                    msg = "Getting close... Friday night is in sight! \uD83D\uDE2E\n";
+                    break;
+                case DateTimeConstants.FRIDAY:
+                    msg = "Just a couple more classes. You can do it! \uD83D\uDE03\n";
+                    break;
+                case DateTimeConstants.SATURDAY:
+                    msg = "SATURDAY VICTORY SCREECH! (insert SpongeBob pun here)\n";
+                    break;
+                case DateTimeConstants.SUNDAY:
+                    msg = "Enjoy one more day of freedom (taps plays in the distance)\n";
+                    break;
+            }
+
+            msg += String.format("%s High of %s degrees.", forecast.getDaySummary(0), forecast.getDayHigh(0));
+
+            postMessage(msg);
+
+        } catch (UnirestException e) {
+            GroupMeBots.log(e, dateTime);
+        }
+    }
+
+    @Deprecated
+    private void announceMorningWeatherWunder(DateTime dateTime) {
         try {
             HttpResponse<JsonNode> response =
                     Unirest.get("http://api.wunderground.com/api/d9f925a1da9be828/forecast/q/NJ/ewing.json")
@@ -69,39 +189,67 @@ public class WeatherBot extends AbstractBot {
             double nightSnow = getSimpleForecastNumeral(data,"snow_night", "in");
             double avgHumidity = getSimpleForecastNumeral(data,"qpf_day", "in");
 
-            String message = String.format("Good morning \uD83D\uDE0A%nDay: %s%nNight: %s%n", daySummary, nightSummary);
-            if (dayRain > 0) {
-                message = message.concat("Bring an umbrella! Total daytime rain: " + dayRain + '\n');
-            }
-            if (nightRain > 0) {
-                message = message.concat("Close your window tonight! Total nighttime rain: " + nightRain + '\n');
-            }
-            if (daySnow > 0) {
-                message = message.concat("Woo! Snow Day! Daytime snow: " + daySnow + '\n');
-            }
-            if (nightSnow > 0) {
-                message = message.concat("Put your PJs on backwards! Nighttime snow: " + nightSnow + '\n');
-            }
-            if (avgHumidity > 69) {
-                message = message.concat("It's going to be a humid one... : " + avgHumidity + "% avg. humidity" + '\n');
+            String msg;
+
+            switch (GroupMeBots.getDateTime().getDayOfWeek()) {
+                case DateTimeConstants.MONDAY:
+                    msg = "Garfield isn't the only one who hates mondays... College students! \uD83D\uDE09\n";
+                    break;
+                case DateTimeConstants.TUESDAY:
+                    msg = "One day down, 4 to go! \uD83D\uDE0A\n";
+                    break;
+                case DateTimeConstants.WEDNESDAY:
+                    msg = "HUMP DAY! Half way there, everyone! \uD83D\uDC2A\n";
+                    break;
+                case DateTimeConstants.THURSDAY:
+                    msg = "Getting close... Friday night is in sight! \uD83D\uDE2E\n";
+                    break;
+                case DateTimeConstants.FRIDAY:
+                    msg = "Just a couple more classes. You can do it! \uD83D\uDE03\n";
+                    break;
+                case DateTimeConstants.SATURDAY:
+                    msg = "SATURDAY VICTORY SCREECH! (insert SpongeBob pun here)\n";
+                    break;
+                case DateTimeConstants.SUNDAY:
+                    msg = "Enjoy one more day of freedom (taps plays in the distance)\n";
+                    break;
+                default:
+                    msg = "";
             }
 
-            postMessage(message);
-            System.out.println(GroupMeBot.getTimeStamp(dateTime) + "Morning weather announcement JSON return:\n");
-            System.out.println(response.getBody().toString());
+            msg += String.format("%nDay: %s%nNight: %s%n", daySummary, nightSummary);
+            if (dayRain > 0) {
+                msg = msg.concat("Bring an umbrella! Total daytime rain: " + dayRain + '\n');
+            }
+            if (nightRain > 0) {
+                msg = msg.concat("Close your window tonight! Total nighttime rain: " + nightRain + '\n');
+            }
+            if (daySnow > 0) {
+                msg = msg.concat("Woo! Snow Day! Daytime snow: " + daySnow + '\n');
+            }
+            if (nightSnow > 0) {
+                msg = msg.concat("Put your PJs on backwards! Nighttime snow: " + nightSnow + '\n');
+            }
+            if (avgHumidity > 69) {
+                msg = msg.concat("It's going to be a humid one... : " + avgHumidity + "% avg. humidity" + '\n');
+            }
+
+            postMessage(msg);
+            GroupMeBots.log("Morning weather announcement JSON return:\n");
+            GroupMeBots.log(response.getBody().toString());
 
         } catch (UnirestException e) {
             try {
-                postMessage("Oops. Can't connect to our weather overlords (WUnderground). Get on it, Ethan!");
+                postMessage("Oops. Can't connect to our weather overlords. Get on it, Ethan!");
             } catch (UnirestException e1) {
-                e1.printStackTrace();
+                GroupMeBots.log(e1, dateTime);
             }
         } catch (JSONException e) {
             try {
                 postMessage("The internet seems to be spewing random nonsense at me... Ethan will look into it.");
-                e.printStackTrace();
+                GroupMeBots.log(e, dateTime);
             } catch (UnirestException e1) {
-                e1.printStackTrace();
+                GroupMeBots.log(e1, dateTime);
             }
         }
     }
@@ -125,17 +273,23 @@ public class WeatherBot extends AbstractBot {
 
     @Override
     public String getBotID() {
-        return "f4c307d3fb408a8b3ef2d93b2c";
+        switch (productionLevel) {
+            case DEVELOPMENT: return GroupMeBots.getPrivateKeys().getKey("weatherbot:development", "bot_id");
+            case PRODUCTION: return GroupMeBots.getPrivateKeys().getKey("weatherbot:production", "bot_id");
+            default: return null;
+        }
     }
 
     @Override
     public String getBotName() {
-        return "WeatherBot☀️";
+        return "WeatherBot ☀️";
     }
 
     @Override
     public String getAvatarURL() {
-        return "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Weather_Rounded.svg/200px-Weather_Rounded.svg.png";
+        // this doesn't appear to be working correctly programmatically, so I'm nullifying the return, which is ignored.
+        //return "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Weather_Rounded.svg/200px-Weather_Rounded.svg.png";
+        return null;
     }
 
     @Override
@@ -145,6 +299,10 @@ public class WeatherBot extends AbstractBot {
 
     @Override
     public String getGroupID() {
-        return "28437540";
+        switch (productionLevel) {
+            case DEVELOPMENT: return GroupMeBots.getPrivateKeys().getKey("weatherbot:development", "group_id");
+            case PRODUCTION: return GroupMeBots.getPrivateKeys().getKey("weatherbot:production", "group_id");
+            default: return null;
+        }
     }
 }
