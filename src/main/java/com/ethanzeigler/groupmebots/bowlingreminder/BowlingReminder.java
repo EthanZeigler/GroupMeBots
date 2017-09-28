@@ -50,13 +50,13 @@ public class BowlingReminder extends AbstractBot {
                         postReminder();
                     } else if (dateTime.getDayOfWeek() == DateTimeConstants.THURSDAY) {
                         // it's thursday. There may or may not be practice
-                        if (dateTime.getDayOfMonth() < 7) {
+                        /*if (dateTime.getDayOfMonth() < 7) {
                             // it's the first of the month. No practice
                             postNoPracticeReminder();
-                        } else {
+                        } else {*/
                             // it's not the first of the month. Practice
                             postReminder();
-                        }
+                        //}
                     }
                 }/* else if (dateTime.getDayOfWeek() == DateTimeConstants.SATURDAY && dateTime.getHourOfDay() >= 16) {
                     // it's saturday and it's after 4
