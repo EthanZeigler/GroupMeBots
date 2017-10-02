@@ -1,1 +1,1 @@
-web: java -jar -cp target/classes:target/dependency/* GroupMeBots
+web: java -cp target/classes:target/dependency/* -jar target/GroupMeBot-1.0-SNAPSHOT-jar-with-dependencies.jar
