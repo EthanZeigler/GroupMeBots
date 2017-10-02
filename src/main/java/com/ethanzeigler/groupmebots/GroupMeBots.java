@@ -9,6 +9,8 @@ import org.json.simple.JSONValue;
 import org.json.simple.parser.ParseException;
 
 import java.io.*;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.*;
@@ -46,6 +48,18 @@ public class GroupMeBots {
 
         bots.add(new WeatherBot(ProductionLevel.PRODUCTION));
         bots.add(new BowlingReminder());
+
+        log("Loading socket");
+        Socket s = new Socket();
+        try {
+            String val = System.getenv("PORT");
+            s.bind(new InetSocketAddress(Integer.parseInt(val)));
+        } catch (IOException e) {
+            log("Fatal: cannot bind to port");
+            e.printStackTrace();
+        }
+
+
 
         // call bot enablers
         log("Enabling bots...");
