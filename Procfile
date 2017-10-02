@@ -1,1 +1,1 @@
-web: java -cp target/classes:target/dependency/* -jar target/GroupMeBot-1.0-SNAPSHOT-jar-with-dependencies.jar
+worker: java -cp target/classes:target/dependency/* -jar target/GroupMeBot-1.0-SNAPSHOT-jar-with-dependencies.jar
