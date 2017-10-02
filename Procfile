@@ -1,0 +1,1 @@
+web: java -jar -cp target/classes:target/dependency/* GroupMeBot-1.0-SNAPSHOT.jar
